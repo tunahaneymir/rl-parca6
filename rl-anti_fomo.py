@@ -93,10 +93,16 @@ class AntiFOMOManager:
     def detect_fomo(
         self, 
         setup: SetupData, 
-        bot_state: BotState
+        bot_state: BotState,
+        emotion_stability: float = 0.5  # 🆕 Adaptive learning parameter
     ) -> Dict:
         """
-        Main FOMO detection function
+        Main FOMO detection function with adaptive learning
+        
+        Args:
+            setup: Setup data
+            bot_state: Bot psychological state
+            emotion_stability: Emotional stability from adaptive learning (0.0-1.0)
         
         Returns:
             Dict with:
@@ -105,7 +111,16 @@ class AntiFOMOManager:
             - signals: List[str]
             - reason: str
             - action: str
+            - adaptive_threshold: Adjusted threshold based on emotion
+            - emotion_stability: Input emotion value
+            - adaptive_patience: Calculated patience with emotion
         """
+        
+        # ════════════════════════════════════
+        # 🆕 ADAPTIVE PATIENCE CALCULATION
+        # ════════════════════════════════════
+        # Combine bot patience with emotion stability
+        adaptive_patience = (bot_state.patience + emotion_stability) / 2.0
         
         fomo_signals: List[str] = []
         fomo_score = 0
@@ -132,9 +147,10 @@ class AntiFOMOManager:
             fomo_score += self.RAPID_TRADING_SCORE
         
         # ════════════════════════════════════
-        # CHECK 4: Low Patience
+        # 🆕 CHECK 4: Adaptive Low Patience
         # ════════════════════════════════════
-        if bot_state.patience < self.LOW_PATIENCE_THRESHOLD:
+        # Use adaptive patience instead of raw patience
+        if adaptive_patience < self.LOW_PATIENCE_THRESHOLD:
             fomo_signals.append('low_patience')
             fomo_score += self.LOW_PATIENCE_SCORE
         
@@ -146,15 +162,34 @@ class AntiFOMOManager:
             fomo_score += self.VOLATILITY_SPIKE_SCORE
         
         # ════════════════════════════════════
-        # DECISION
+        # 🆕 ADAPTIVE THRESHOLD (emotion-based)
         # ════════════════════════════════════
-        is_fomo = fomo_score >= self.FOMO_SCORE_THRESHOLD
+        # Adjust FOMO threshold based on emotional stability
+        adaptive_threshold = self.FOMO_SCORE_THRESHOLD
         
+        if emotion_stability < 0.4:
+            # Low stability → More strict (easier to trigger FOMO block)
+            adaptive_threshold = 40
+        elif emotion_stability > 0.8:
+            # High stability → More relaxed (harder to trigger FOMO block)
+            adaptive_threshold = 60
+        # else: use default (50)
+        
+        # ════════════════════════════════════
+        # 🆕 DECISION (with adaptive threshold)
+        # ════════════════════════════════════
+        is_fomo = fomo_score >= adaptive_threshold
+        
+        # Generate reason with adaptive context
         if is_fomo:
             reason = f"FOMO detected: {', '.join(fomo_signals)}"
+            if emotion_stability < 0.4:
+                reason += " (emotionally unstable - strict threshold)"
             action = "BLOCK TRADE"
         else:
             reason = "No FOMO detected"
+            if emotion_stability > 0.8:
+                reason += " (high emotional stability)"
             action = "ALLOW"
         
         return {
@@ -163,6 +198,9 @@ class AntiFOMOManager:
             'signals': fomo_signals,
             'reason': reason,
             'action': action,
+            'adaptive_threshold': adaptive_threshold,  # 🆕
+            'emotion_stability': emotion_stability,    # 🆕
+            'adaptive_patience': adaptive_patience,    # 🆕
             'details': self._generate_details(setup, bot_state, fomo_signals)
         }
     
@@ -284,19 +322,19 @@ class AntiFOMOManager:
 # ════════════════════════════════════════
 
 def example_scenarios():
-    """Example FOMO detection scenarios"""
+    """Example FOMO detection scenarios with adaptive learning"""
     
     manager = AntiFOMOManager()
     
     print("=" * 60)
-    print("ANTI-FOMO DETECTION EXAMPLES")
+    print("ANTI-FOMO DETECTION - WITH ADAPTIVE LEARNING")
     print("=" * 60)
     print()
     
     # ════════════════════════════════════════
-    # SCENARIO 1: Classic FOMO (BLOCKED)
+    # SCENARIO 1: Classic FOMO with Low Emotion Stability
     # ════════════════════════════════════════
-    print("SCENARIO 1: Classic FOMO (Price Chasing)")
+    print("SCENARIO 1: FOMO + Low Emotional Stability")
     print("-" * 60)
     
     fomo_setup = SetupData(
@@ -317,100 +355,118 @@ def example_scenarios():
         minutes_since_last_trade=5  # Too fast!
     )
     
-    result = manager.detect_fomo(fomo_setup, fomo_bot_state)
+    # 🆕 Low emotion stability → Stricter FOMO detection
+    result = manager.detect_fomo(fomo_setup, fomo_bot_state, emotion_stability=0.3)
+    
+    print(f"Emotion Stability: {result['emotion_stability']}")
+    print(f"Adaptive Threshold: {result['adaptive_threshold']} (default: 50)")
+    print(f"Adaptive Patience: {result['adaptive_patience']:.2f}")
+    print(f"FOMO Score: {result['score']}")
     print(f"FOMO Detected: {result['is_fomo']}")
-    print(f"Score: {result['score']}")
     print(f"Signals: {result['signals']}")
     print(f"Action: {result['action']}")
     print(f"Reason: {result['reason']}")
     print()
     
     # ════════════════════════════════════════
-    # SCENARIO 2: Patient Entry (ALLOWED)
+    # SCENARIO 2: Same Setup + High Emotion Stability
     # ════════════════════════════════════════
-    print("SCENARIO 2: Patient Entry (All Good)")
+    print("SCENARIO 2: Same Setup + High Emotional Stability")
     print("-" * 60)
     
-    good_setup = SetupData(
+    # Same setup, but high emotion stability
+    result2 = manager.detect_fomo(fomo_setup, fomo_bot_state, emotion_stability=0.9)
+    
+    print(f"Emotion Stability: {result2['emotion_stability']}")
+    print(f"Adaptive Threshold: {result2['adaptive_threshold']} (relaxed)")
+    print(f"Adaptive Patience: {result2['adaptive_patience']:.2f}")
+    print(f"FOMO Score: {result2['score']}")
+    print(f"FOMO Detected: {result2['is_fomo']}")
+    print(f"Action: {result2['action']}")
+    print(f"Reason: {result2['reason']}")
+    print()
+    print("💡 Notice: Same FOMO score, but different threshold!")
+    print()
+    
+    # ════════════════════════════════════════
+    # SCENARIO 3: Perfect Setup + High Emotion
+    # ════════════════════════════════════════
+    print("SCENARIO 3: Perfect Setup + High Emotion Stability")
+    print("-" * 60)
+    
+    perfect_setup = SetupData(
         zone={'price': 50000},
         choch={'strength': 0.75},
         fib_retest={'level': 0.705},
         zone_price=50000,
-        current_price=50150,  # 0.3% away (good!)
+        current_price=50150,  # 0.3% away
         setup_score=85,
         zone_quality=8,
         atr_percent=5.2,
-        atr_change_percent=10  # Normal
+        atr_change_percent=10
     )
     
-    good_bot_state = BotState(
-        confidence=0.75,
-        stress=0.25,
-        patience=0.8,  # High!
-        minutes_since_last_trade=45  # Good wait
+    perfect_bot_state = BotState(
+        confidence=0.85,
+        stress=0.15,
+        patience=0.85,
+        minutes_since_last_trade=45
     )
     
-    result = manager.detect_fomo(good_setup, good_bot_state)
-    print(f"FOMO Detected: {result['is_fomo']}")
-    print(f"Score: {result['score']}")
-    print(f"Signals: {result['signals']}")
-    print(f"Action: {result['action']}")
-    print(f"Reason: {result['reason']}")
+    # High emotion + perfect setup
+    result3 = manager.detect_fomo(perfect_setup, perfect_bot_state, emotion_stability=0.95)
+    
+    print(f"Emotion Stability: {result3['emotion_stability']}")
+    print(f"Adaptive Threshold: {result3['adaptive_threshold']}")
+    print(f"Adaptive Patience: {result3['adaptive_patience']:.2f}")
+    print(f"FOMO Score: {result3['score']}")
+    print(f"FOMO Detected: {result3['is_fomo']}")
+    print(f"Action: {result3['action']}")
+    print(f"Reason: {result3['reason']}")
     print()
     
     # ════════════════════════════════════════
-    # SCENARIO 3: Volatility Spike (BLOCKED)
+    # SCENARIO 4: Borderline Case - Adaptive Decision
     # ════════════════════════════════════════
-    print("SCENARIO 3: Volatility Spike (News Event)")
+    print("SCENARIO 4: Borderline (Score=55) - Adaptive Decision")
     print("-" * 60)
     
-    volatile_setup = SetupData(
-        zone={'price': 50000},
-        choch={'strength': 0.82},
-        fib_retest={'level': 0.705},
-        zone_price=50000,
-        current_price=50100,
-        setup_score=78,
-        zone_quality=7,
-        atr_percent=12.0,  # High!
-        atr_change_percent=150  # ATR 2.5x (spike!)
-    )
-    
-    normal_bot_state = BotState(
-        confidence=0.7,
-        stress=0.2,
-        patience=0.75,
-        minutes_since_last_trade=30
-    )
-    
-    result = manager.detect_fomo(volatile_setup, normal_bot_state)
-    print(f"FOMO Detected: {result['is_fomo']}")
-    print(f"Score: {result['score']}")
-    print(f"Signals: {result['signals']}")
-    print(f"Action: {result['action']}")
-    print(f"Reason: {result['reason']}")
-    if 'volatility_spike' in result['signals']:
-        print(f"ATR Details: {result['details'].get('atr_change')}")
-    print()
-    
-    # ════════════════════════════════════════
-    # SCENARIO 4: Entry Timing Validation
-    # ════════════════════════════════════════
-    print("SCENARIO 4: Entry Timing Check")
-    print("-" * 60)
-    
-    old_setup = SetupData(
+    borderline_setup = SetupData(
         zone={'price': 50000},
         choch={'strength': 0.65},
-        fib_retest={'level': 0.618},
-        candles_since_setup=7,  # Too old!
-        setup_age_minutes=85,  # 1h 25min
+        fib_retest=None,  # Missing!
+        zone_price=50000,
+        current_price=50800,  # 1.6% away
+        setup_score=68,
+        zone_quality=6,
+        atr_percent=6.5
     )
     
-    timing_result = manager.validate_entry_timing(old_setup)
-    print(f"Valid Timing: {timing_result['valid']}")
-    print(f"Issues: {timing_result['issues']}")
-    print(f"Recommendation: {timing_result['recommendation']}")
+    borderline_bot = BotState(
+        confidence=0.65,
+        stress=0.25,
+        patience=0.55,
+        minutes_since_last_trade=20
+    )
+    
+    # Test with different emotion levels
+    print("\n  Test A: Low Emotion (0.3)")
+    result_low = manager.detect_fomo(borderline_setup, borderline_bot, emotion_stability=0.3)
+    print(f"    Threshold: {result_low['adaptive_threshold']}, Score: {result_low['score']}")
+    print(f"    Decision: {result_low['action']}")
+    
+    print("\n  Test B: Medium Emotion (0.5)")
+    result_med = manager.detect_fomo(borderline_setup, borderline_bot, emotion_stability=0.5)
+    print(f"    Threshold: {result_med['adaptive_threshold']}, Score: {result_med['score']}")
+    print(f"    Decision: {result_med['action']}")
+    
+    print("\n  Test C: High Emotion (0.85)")
+    result_high = manager.detect_fomo(borderline_setup, borderline_bot, emotion_stability=0.85)
+    print(f"    Threshold: {result_high['adaptive_threshold']}, Score: {result_high['score']}")
+    print(f"    Decision: {result_high['action']}")
+    
+    print("\n💡 Adaptive Learning in Action:")
+    print("   Same setup, different outcomes based on emotional stability!")
     print()
     
     print("=" * 60)
