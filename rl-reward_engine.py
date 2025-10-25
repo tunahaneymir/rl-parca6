@@ -394,5 +394,152 @@ def example_usage():
     print(f"Message: {result['message']}")
 
 
+    def calculate_rl_reward(
+        self,
+        outcome_score: float,
+        dna_score: float = 50.0,
+        emotion_stability: float = 0.5,
+        param_gain: float = 0.0
+    ) -> Dict:
+        """
+        Adaptive learning için RL reward hesapla
+        
+        Args:
+            outcome_score: Base reward from calculate_outcome_score (-200 to +200)
+            dna_score: DNA match score (0-100) - Future use
+            emotion_stability: Emotional stability (0.0-1.0)
+            param_gain: Parameter optimization gain (-1.0 to +1.0) - Future use
+        
+        Returns:
+            Dict with:
+            - rl_reward: Normalized reward (-1.0 to +1.0)
+            - normalized_base: Base component
+            - adaptive_components: DNA, emotion, param contributions
+        """
+        
+        # ════════════════════════════════════
+        # 1. Normalize base reward
+        # ════════════════════════════════════
+        normalized_base = outcome_score / 200.0
+        
+        # ════════════════════════════════════
+        # 2. Adaptive learning components
+        # ════════════════════════════════════
+        dna_component = 0.05 * (dna_score / 100.0)      # Max 0.05
+        emotion_component = 0.03 * emotion_stability    # Max 0.03
+        param_component = 0.02 * param_gain             # Max 0.02
+        
+        # ════════════════════════════════════
+        # 3. Weighted total
+        # ════════════════════════════════════
+        weighted_reward = (
+            normalized_base
+            + dna_component
+            + emotion_component
+            + param_component
+        )
+        
+        # Clip to range [-1.0, +1.0]
+        final_reward = max(-1.0, min(1.0, weighted_reward))
+        
+        # ════════════════════════════════════
+        # 4. Log learning metrics
+        # ════════════════════════════════════
+        self._log_learning_metrics({
+            'outcome_score': outcome_score,
+            'normalized_base': normalized_base,
+            'dna_score': dna_score,
+            'dna_component': dna_component,
+            'emotion_stability': emotion_stability,
+            'emotion_component': emotion_component,
+            'param_gain': param_gain,
+            'param_component': param_component,
+            'final_reward': final_reward
+        })
+        
+        return {
+            'rl_reward': final_reward,
+            'normalized_base': normalized_base,
+            'adaptive_components': {
+                'dna': dna_component,
+                'emotion': emotion_component,
+                'param': param_component
+            },
+            'breakdown': {
+                'base': f"{normalized_base:+.3f}",
+                'dna': f"{dna_component:+.3f}",
+                'emotion': f"{emotion_component:+.3f}",
+                'param': f"{param_component:+.3f}",
+                'total': f"{final_reward:+.3f}"
+            }
+        }
+    
+    def _log_learning_metrics(self, metrics: Dict):
+        """Learning metriklerini logla"""
+        print(f"[ADAPTIVE LEARNING] Reward calculation:")
+        print(f"  Base: {metrics['normalized_base']:+.3f} (from {metrics['outcome_score']:+.0f})")
+        print(f"  DNA:  {metrics['dna_component']:+.3f} (score: {metrics['dna_score']:.0f})")
+        print(f"  Emotion: {metrics['emotion_component']:+.3f} (stability: {metrics['emotion_stability']:.2f})")
+        print(f"  Param: {metrics['param_component']:+.3f} (gain: {metrics['param_gain']:+.2f})")
+        print(f"  → Final RL Reward: {metrics['final_reward']:+.3f}")
+
+
+# ════════════════════════════════════════
+# USAGE EXAMPLE - EXTENDED
+# ════════════════════════════════════════
+
+def example_usage_with_rl_reward():
+    """Extended examples with RL reward calculation"""
+    
+    engine = RewardEngine()
+    
+    print("=" * 70)
+    print("REWARD ENGINE - WITH ADAPTIVE RL REWARD")
+    print("=" * 70)
+    print()
+    
+    # Example: Perfect trade with adaptive learning
+    perfect_trade = TradeOutcome(
+        trade_id="T001",
+        symbol="BTCUSDT",
+        direction="LONG",
+        pnl_percent=3.2,
+        r_realized=1.8,
+        setup_score=87,
+        zone_quality=9,
+        choch_strength=0.86,
+        entry_quality="EXCELLENT",
+        perfect_timing=True,
+        patience_shown=True,
+        risk_discipline=True,
+        kademeli_exit=True
+    )
+    
+    # Step 1: Calculate outcome score
+    outcome = engine.calculate_outcome_score(perfect_trade)
+    print(f"PERFECT TRADE:")
+    print(f"  Outcome Score: {outcome['total_score']}")
+    print(f"  Category: {outcome['category']}")
+    print(f"  Breakdown: Base={outcome['breakdown']['base']}, "
+          f"Bonuses={outcome['breakdown']['bonuses']}, "
+          f"Penalties={outcome['breakdown']['penalties']}")
+    print()
+    
+    # Step 2: Calculate RL reward (with adaptive learning)
+    rl_result = engine.calculate_rl_reward(
+        outcome_score=outcome['total_score'],
+        dna_score=75.0,  # Future: DNA matching system
+        emotion_stability=0.85,  # High emotional stability
+        param_gain=0.15  # Positive parameter optimization
+    )
+    print(f"  RL Reward: {rl_result['rl_reward']:.3f}")
+    print(f"  Components: {rl_result['breakdown']}")
+    print()
+    print("-" * 70)
+    print()
+
+
 if __name__ == "__main__":
     example_usage()
+    print()
+    example_usage_with_rl_reward()
